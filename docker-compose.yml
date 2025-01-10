@@ -1,0 +1,49 @@
+version: "3.9"
+services:
+  # Neo4j container
+  neo4j:
+    image: neo4j:latest
+    container_name: credit-card-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/test  # Set authentication credentials
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    networks:
+      - credit-card
+
+  # Qdrant container
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: credit-card-qdrant
+    ports:
+      - "6333:6333"  # Qdrant API
+    networks:
+      - credit-card
+  
+  # Ollama container
+  ollama:
+    image: ollama/ollama
+    container_name: credit-card-ollama
+    ports:
+      - "11434:11434"
+    metworks:
+      - credit-card
+
+  # Python app container
+  python-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    networks:
+      - credit-card
+    depends_on:
+      - neo4j  # Ensure Neo4j starts first
+      - qdrant  # Ensure Qdrant starts first
+      - ollama # Ensure ollama starts first
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+networks:
+  credit-card:
+    driver: bridge

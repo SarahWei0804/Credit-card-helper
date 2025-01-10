@@ -1,0 +1,7 @@
+langchain
+langchain_core
+opencc
+langchain_huggingface
+langchain_qdrant
+langchain_community
+ollama
