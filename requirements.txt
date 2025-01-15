@@ -1,7 +1,10 @@
 langchain
 langchain_core
-opencc
+# opencc
 langchain_huggingface
 langchain_qdrant
 langchain_community
+langchain_ollama
 ollama
+gradio
+qdrant-client

@@ -1,7 +1,7 @@
 import json 
 from langchain_core.documents import Document
 import re
-from langchain.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -17,8 +17,13 @@ from langchain.retrievers import EnsembleRetriever
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.runnables import RunnablePassthrough
 import time
-import opencc
+import gradio as gr
+# import opencc
 import ollama
+import os
+from qdrant_client import QdrantClient
+from langchain_qdrant import FastEmbedSparse, RetrievalMode
+
 
 ollama.pull("qwen2:7b-instruct")
 ollama.pull("llama3.2")
@@ -45,23 +50,30 @@ def chunk_and_store(documents):
                                         is_separator_regex=True,
                                         chunk_overlap=50,
                                         separators=['。'])
-
-    embedding = HuggingFaceEmbeddings(model_name='BAAI/bge-base-zh-v1.5', model_kwargs={'device':'mps'})
-    collection_name = 'credit_card_chunk300'
+    sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
+    embedding = HuggingFaceEmbeddings(model_name='BAAI/bge-base-zh-v1.5', model_kwargs={'device':'cpu'})
+    collection_name = 'credit_card_chunk300_hybrid'
     # qdrant_url = ':memory:'
-    qdrant_url = 'http://localhost:6333'
+    # qdrant_url = 'http://localhost:6333'
+    qdrant_url = os.getenv('QDRANT_HOST')
     chunks = splitter.split_documents(documents)
+    qdrant_client = QdrantClient(url=qdrant_url)
+    if qdrant_client.collection_exists(collection_name=collection_name):
+        vec_store = QdrantVectorStore.from_existing_collection(collection_name=collection_name,
+                                                        embedding=embedding,
+                                                        url=qdrant_url)
+    else:
+        ## check if the index exists already
+        vec_store = QdrantVectorStore.from_documents(chunks,
+                                    collection_name=collection_name,
+                                    embedding = embedding,
+                                    force_recreate=True,
+                                    url = qdrant_url,
+                                    sparse_embedding=sparse_embeddings,
+                                    retrieval_mode=RetrievalMode.HYBRID
+                                    # location=":memory:"
+                                    )
 
-    # vec_store = QdrantVectorStore.from_documents(chunks,
-    #                             collection_name=collection_name,
-    #                             embedding = embedding,
-    #                             force_recreate=True,
-    #                             location = qdrant_url)
-    
-    vec_store = QdrantVectorStore.from_existing_collection(
-                              collection_name=collection_name,
-                              embedding = embedding,
-                              url = qdrant_url)
     
     print("Chunk and store in Qdrant successfully...")
 
@@ -177,7 +189,7 @@ def retrieve_docs(query: str, enable_grade: bool, enable_multiquery: bool, enabl
 
 def generate_reply(query):
     llm = ChatOllama(model='qwen2:7b-instruct', temperature=0)
-    converter = opencc.OpenCC('s2t.json')
+    # converter = opencc.OpenCC('s2t.json')
     QUERY_PROMPT = PromptTemplate(
         input_variables=["question"],
         template="""You are an AI question-answering assistant. Your task is to answer the question based on the provided documents. The documents are part of the text from the description of the credit cards.
@@ -202,11 +214,19 @@ def generate_reply(query):
     response = chain.invoke({"context": format_docs(retrieved_docs), "question":query})
     end = time.time()
     print(f"Spend time: {round(end-start, 2)}")
-    return converter.convert(response)
+    # return converter.convert(response)
+    return response
 
 if __name__ == "__main__":
     while True:
-        query = input("Type your question about the credit cards..... ")
+        query = input("Type your question about the credit cards....  ")
         if query != 'quit':
             print(generate_reply(query))
 
+    # def echo(message, history):
+    #     return generate_reply(message)
+
+    # demo = gr.ChatInterface(fn=echo, type="messages", examples=["星展eco永續極簡卡優惠有什麼？", 
+    #                                                             "星展PChome Prime聯名卡回饋是幾趴？", 
+    #                                                             "星展eco永續優選卡活動期間是什麼時候？"], title="Credit Card Bot")
+    # demo.launch(server_name='0.0.0.0', server_port=8000)
