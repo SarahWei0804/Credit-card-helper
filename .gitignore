@@ -1,5 +1,5 @@
-comet.ipynb
-utility/
 neo4j_data/
 qdrant_data/
 credit-card-rag.ipynb
+lightrag/
+chroma_db_parent/
